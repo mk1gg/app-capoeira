@@ -3,9 +3,9 @@ import pandas as pd
 
 st.set_page_config(page_title="Capoeira CS:GO", layout="centered")
 
-st.title("🏆 Capoeira - Avaliação & Ranking")
+st.title("🏆 Avaliação & Ranking")
 
-# A lista de graduações exatamente como você pediu
+# A lista de graduações
 graduacoes = [
     "Aluno (Branca-Amarela)", 
     "Graduado (Azul)", 
@@ -16,12 +16,24 @@ graduacoes = [
     "Mestre (Vermelha)"
 ]
 
+# Nova lógica: As faixas etárias mudam dependendo da graduação escolhida!
+def obter_faixas_etarias(graduacao):
+    if graduacao == "Aluno (Branca-Amarela)":
+        return ["Infantil", "Juvenil", "Adulto", "Sênior (Idosos)"]
+    else:
+        return ["Jovens Adultos", "Maiores de 40 anos"]
+
 tab1, tab2 = st.tabs(["📝 Avaliar Bateria", "📊 Ranking (Estilo CS)"])
 
 # ABA 1: TELA DO AVALIADOR
 with tab1:
     st.subheader("Bateria Atual")
+    
+    # Primeiro escolhe a graduação
     graduacao_selecionada = st.selectbox("Graduação", graduacoes)
+    
+    # Depois o sistema carrega as idades certas para aquela graduação
+    faixa_etaria_selecionada = st.selectbox("Faixa Etária", obter_faixas_etarias(graduacao_selecionada))
     
     col1, col2 = st.columns(2)
     with col1:
@@ -35,20 +47,22 @@ with tab1:
     volume = st.slider("2. Volume de Jogo", 0.0, 10.0, 5.0, 0.5)
     
     st.write("---")
-    st.subheader("Estatísticas Especiais ('Kills' do CS)")
+    st.subheader("Estatísticas ('Kills')")
     quedas = st.number_input("Quedas aplicadas (Takedowns)", min_value=0, step=1)
     floreios = st.number_input("Floreios / Acrobacias", min_value=0, step=1)
 
     if st.button("ENVIAR AVALIAÇÃO", use_container_width=True):
-        st.success(f"✅ Notas de {comp1} x {comp2} enviadas!")
+        st.success(f"✅ Notas enviadas! Categoria: {graduacao_selecionada} - {faixa_etaria_selecionada}")
 
 # ABA 2: TELA DO MESTRE DE CERIMÔNIAS
 with tab2:
-    st.subheader("Tabela de Classificação Global")
+    st.subheader("Tabela de Classificação")
     
-    filtro_grad = st.selectbox("Filtrar por Graduação", ["Todas"] + graduacoes)
+    # O locutor agora filtra por duas coisas para achar a categoria exata
+    filtro_grad = st.selectbox("Ver ranking da Graduação:", graduacoes)
+    filtro_idade = st.selectbox("Ver ranking da Faixa Etária:", obter_faixas_etarias(filtro_grad))
     
-    # Dados simulados com as novas graduações
+    # Dados simulados atualizados para testar os filtros
     dados = {
         "Nº": [135, 42, 7, 88, 12, 199, 50],
         "Apelido": ["Macaco", "Vento", "Faísca", "Muralha", "Sombra", "Trovão", "Bala"],
@@ -57,24 +71,31 @@ with tab2:
             "Instrutor (Verde)", 
             "Aluno (Branca-Amarela)", 
             "Mestrando (Preta)", 
-            "Professor (Roxo)", 
+            "Aluno (Branca-Amarela)", 
             "Graduado (Azul)", 
             "Mestre (Vermelha)"
         ],
+        "Faixa Etária": [
+            "Jovens Adultos", 
+            "Maiores de 40 anos", 
+            "Infantil", 
+            "Jovens Adultos", 
+            "Sênior (Idosos)", 
+            "Jovens Adultos", 
+            "Maiores de 40 anos"
+        ],
         "Pts Totais": [45.5, 42.0, 39.5, 45.5, 30.0, 38.0, 48.0],
         "Quedas (Kills)": [5, 2, 4, 1, 0, 3, 6],
-        "Floreios (HS)": [3, 8, 2, 0, 1, 4, 5],
-        "Média (ADR)": [9.1, 8.4, 7.9, 9.1, 6.0, 7.6, 9.6]
+        "Floreios (HS)": [3, 8, 2, 0, 1, 4, 5]
     }
     
     df = pd.DataFrame(dados)
     
-    if filtro_grad != "Todas":
-        df = df[df["Graduação"] == filtro_grad]
+    # A MÁGICA DOS FILTROS: Mostra apenas quem tem a graduação E a idade escolhidas
+    df_filtrado = df[(df["Graduação"] == filtro_grad) & (df["Faixa Etária"] == filtro_idade)]
         
-    df = df.sort_values(by=["Pts Totais", "Quedas (Kills)", "Floreios (HS)"], ascending=[False, False, False])
+    df_filtrado = df_filtrado.sort_values(by=["Pts Totais", "Quedas (Kills)", "Floreios (HS)"], ascending=[False, False, False])
     
-    # Função que pinta as células dependendo da graduação
     def colorir_graduacao(valor):
         cores = {
             "Aluno (Branca-Amarela)": "background-color: #FFFACD; color: black; font-weight: bold;",
@@ -85,10 +106,12 @@ with tab2:
             "Mestrando (Preta)": "background-color: #000000; color: white; font-weight: bold;",
             "Mestre (Vermelha)": "background-color: #FF0000; color: white; font-weight: bold;"
         }
-        # Retorna a cor se a palavra for uma graduação, senão deixa vazio
         return cores.get(valor, "")
 
-    # Aplica a pintura apenas na coluna "Graduação"
-    tabela_colorida = df.style.map(colorir_graduacao, subset=["Graduação"])
+    tabela_colorida = df_filtrado.style.map(colorir_graduacao, subset=["Graduação"])
     
-    st.dataframe(tabela_colorida, hide_index=True, use_container_width=True)
+    # Se a tabela ficar vazia (não tem simulado pra todas), mostra um aviso
+    if df_filtrado.empty:
+        st.warning("Nenhum atleta nesta categoria (nos dados simulados atuais).")
+    else:
+        st.dataframe(tabela_colorida, hide_index=True, use_container_width=True)
