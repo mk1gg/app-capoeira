@@ -1,123 +1,116 @@
 import streamlit as st
 import pandas as pd
+from datetime import datetime
+import gspread
+from google.oauth2.service_account import Credentials
 
-st.set_page_config(page_title="Sistema de Notas - Capoeira", layout="centered")
+# --- 1. CONFIGURAÇÃO DA PÁGINA ---
+st.set_page_config(page_title="Avaliação - Campeonato de Capoeira", layout="centered")
 
-st.title("🏆 Avaliação & Ranking")
-
-categorias_oficiais = [
-    "A) INFANTIL A - até 11 anos de idade - MASCULINO",
-    "B) INFANTIL A - até 11 anos de idade - FEMININO",
-    "C) INFANTIL B - 12 até 14 anos de idade - MASCULINO",
-    "D) INFANTIL B - 12 até 14 anos de idade - FEMININO",
-    "E) JOVENS E ADULTOS - 15 A 17 ANOS - iniciante até 3ª grad. - MASCULINO",
-    "F) JOVENS E ADULTOS - 15 A 17 ANOS - iniciante até 3ª grad. - FEMININO",
-    "G) JOVENS E ADULTOS - ACIMA DE 18 - iniciante até 3ª grad. - MASCULINO",
-    "H) JOVENS E ADULTOS - ACIMA DE 18 - iniciante até 3ª grad. - FEMININO",
-    "I) JOVENS E ADULTOS - 4ª graduação até Graduado - MASCULINO",
-    "J) JOVENS E ADULTOS - 4ª graduação até Graduado - FEMININO",
-    "K) JOVENS E ADULTOS - Instrutor até Professor - MASCULINO",
-    "L) JOVENS E ADULTOS - Instrutor até Professor - FEMININO",
-    "M) JOVENS E ADULTOS - Contramestre até Mestrando - MASCULINO",
-    "N) JOVENS E ADULTOS - Contramestre até Mestrando - FEMININO",
-    "O) Categoria ESPECIAL A - 45 anos acima - Iniciante",
-    "P) Categoria ESPECIAL B - 45 anos acima - Graduação avançada até Instrutor",
-    "Q) Categoria ESPECIAL C - 45 anos acima - Professor até Mestrando"
-]
-
-# Dados fictícios embutidos diretamente no código para facilitar os testes
-dados_teste = {
-    "Nº": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-    "Nome": [
-        "Joãozinho (8 anos)", "Maria (10 anos)", "Pedro (13 anos)", "Ana (14 anos)",
-        "Lucas (16 anos)", "Fernanda (22 anos)", "Carlos (30 anos)", "Roberto (46 anos)",
-        "Mestre Silva (50 anos)", "Instrutora Amanda (28 anos)"
-    ],
-    "Categoria": [
-        "A) INFANTIL A - até 11 anos de idade - MASCULINO",
-        "B) INFANTIL A - até 11 anos de idade - FEMININO",
-        "C) INFANTIL B - 12 até 14 anos de idade - MASCULINO",
-        "D) INFANTIL B - 12 até 14 anos de idade - FEMININO",
-        "E) JOVENS E ADULTOS - 15 A 17 ANOS - iniciante até 3ª grad. - MASCULINO",
-        "H) JOVENS E ADULTOS - ACIMA DE 18 - iniciante até 3ª grad. - FEMININO",
-        "I) JOVENS E ADULTOS - 4ª graduação até Graduado - MASCULINO",
-        "O) Categoria ESPECIAL A - 45 anos acima - Iniciante",
-        "Q) Categoria ESPECIAL C - 45 anos acima - Professor até Mestrando",
-        "L) JOVENS E ADULTOS - Instrutor até Professor - FEMININO"
-    ]
-}
-
-st.info("Para começar, faça o upload da planilha de inscritos OU use os dados de teste abaixo.")
-
-# Opção de usar os dados embutidos
-usar_teste = st.checkbox("🧪 Usar dados de teste (10 atletas fictícios)")
-
-# Upload da planilha real
-arquivo = st.file_uploader("📥 Carregar Planilha (Excel ou CSV)", type=["xlsx", "csv"])
-
-# Lógica para definir qual base de dados usar
-df_atletas = None
-
-if usar_teste:
-    df_atletas = pd.DataFrame(dados_teste)
-elif arquivo:
+# --- 2. CONEXÃO COM O GOOGLE SHEETS ---
+def conectar_planilha():
     try:
-        if arquivo.name.endswith('.csv'):
-            df_atletas = pd.read_csv(arquivo)
-        else:
-            df_atletas = pd.read_excel(arquivo)
+        scopes = ["https://www.googleapis.com/auth/spreadsheets"]
+        # As credenciais da sua conta de serviço Google (JSON) devem ficar no st.secrets do GitHub/Streamlit
+        creds_dict = st.secrets["gcp_service_account"]
+        creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+        client = gspread.authorize(creds)
+        
+        # IMPORTANTE: Substitua o texto abaixo pelo ID real da sua planilha do Google Sheets
+        sheet = client.open_by_key("COLOQUE_AQUI_O_ID_DA_SUA_PLANILHA") 
+        return sheet.worksheet("Dados_Brutos")
     except Exception as e:
-        st.error(f"Ocorreu um erro ao ler a planilha. Verifique as colunas. Erro: {e}")
+        return None
 
-# Se os dados foram carregados (seja por teste ou upload), o sistema abre
-if df_atletas is not None:
-    tab1, tab2 = st.tabs(["📝 Avaliar Bateria", "📊 Ranking Geral"])
+worksheet = conectar_planilha()
+
+# --- 3. INTERFACE PRINCIPAL ---
+st.title("🏆 Campeonato de Capoeira - Avaliação")
+
+# Identificação do Mestre e do Critério
+st.header("1. Identificação do Avaliador")
+col_mestre, col_criterio = st.columns(2)
+
+with col_mestre:
+    mestre_avaliador = st.text_input("Nome do Mestre/Avaliador:")
+
+with col_criterio:
+    criterio = st.selectbox("Qual critério você está avaliando?", 
+                            ["Tradição", "Volume de Jogo", "Técnica"])
+
+# Carregamento da Planilha de Atletas
+st.header("2. Base de Atletas")
+arquivo_upl = st.file_uploader("Carregue a planilha de atletas (Excel ou CSV)", type=["xlsx", "csv"])
+
+if arquivo_upl is not None:
+    # Leitura baseada na extensão do arquivo
+    if arquivo_upl.name.endswith('.csv'):
+        df_atletas = pd.read_csv(arquivo_upl)
+    else:
+        df_atletas = pd.read_excel(arquivo_upl)
     
-    # ABA 1: TELA DO AVALIADOR
-    with tab1:
-        st.subheader("Bateria Atual")
+    # Verificação das colunas obrigatórias
+    colunas_necessarias = ['Nº', 'Nome', 'Categoria']
+    if not all(col in df_atletas.columns for col in colunas_necessarias):
+        st.error(f"Erro: A planilha deve conter exatamente as colunas: {', '.join(colunas_necessarias)}")
+    else:
+        st.success(f"Planilha carregada com sucesso! Total de atletas: {len(df_atletas)}")
         
-        # O menu exibe as categorias unificadas A-Q
-        cat_selecionada = st.selectbox("1. Escolha a Categoria da Bateria", categorias_oficiais)
+        # --- 4. SELEÇÃO DA BATERIA ---
+        st.header("3. Bateria 1x1")
         
-        # Filtra os atletas que pertencem a essa categoria
-        if "Categoria" in df_atletas.columns:
-            atletas_filtrados = df_atletas[df_atletas["Categoria"] == cat_selecionada]
-            lista_competidores = (atletas_filtrados["Nº"].astype(str) + " - " + atletas_filtrados["Nome"]).tolist()
-        else:
-            st.error("A sua base de dados não possui a coluna 'Categoria'.")
-            lista_competidores = []
+        # Lista categorias únicas em ordem alfabética
+        categorias_disponiveis = df_atletas['Categoria'].dropna().unique().tolist()
+        categorias_disponiveis.sort()
         
-        st.write("---")
+        categoria_selecionada = st.selectbox("Selecione a Categoria da Bateria:", categorias_disponiveis)
         
-        if len(lista_competidores) == 0:
-            st.warning("Nenhum atleta inscrito nesta categoria.")
-        else:
-            col1, col2 = st.columns(2)
-            with col1:
-                comp1 = st.selectbox("Competidor 1", lista_competidores, key="c1")
-            with col2:
-                # Se tiver apenas 1 atleta na categoria, evita erro no segundo selectbox
-                opcoes_comp2 = lista_competidores.copy()
-                if len(opcoes_comp2) > 1:
-                    opcoes_comp2.remove(comp1) # Tenta remover o competidor 1 da lista do 2
-                comp2 = st.selectbox("Competidor 2", opcoes_comp2, key="c2")
-                
-            st.write("---")
-            st.subheader("Critérios de Avaliação (Notas Inteiras de 5 a 10)")
-            tradicao = st.slider("A) Tradição (Fundamentos e rituais)", 5, 10, 7, 1)
-            volume = st.slider("B) Volume de Jogo (Golpes e criatividade)", 5, 10, 7, 1)
-            tecnica = st.slider("C) Técnica (Movimentos corretos e físicos)", 5, 10, 7, 1)
+        # Filtra os atletas pela categoria selecionada
+        df_categoria = df_atletas[df_atletas['Categoria'] == categoria_selecionada]
+        lista_nomes = df_categoria['Nome'].tolist()
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            atleta_a = st.selectbox("Atleta A:", ["Selecione..."] + lista_nomes)
+        with col2:
+            atleta_b = st.selectbox("Atleta B:", ["Selecione..."] + lista_nomes)
             
-            if st.button("ENVIAR AVALIAÇÃO", use_container_width=True):
-                st.success("✅ Notas enviadas para a dupla selecionada!")
-
-    # ABA 2: TELA DO RANKING
-    with tab2:
-        st.subheader("Ranking da Categoria")
-        filtro_cat = st.selectbox("Ver ranking da Categoria:", categorias_oficiais, key="rcat")
-        
-        st.info("Interface finalizada. A exibição do ranking aguarda a futura integração com o banco de dados do Google Sheets.")
-        
-else:
-    st.warning("⚠️ O sistema está bloqueado. Marque a caixa de testes acima ou faça o upload da planilha para liberar as abas de avaliação e ranking.")
+        if atleta_a != "Selecione..." and atleta_b != "Selecione..." and atleta_a == atleta_b:
+            st.error("Erro: Selecione atletas diferentes para compor a bateria.")
+            
+        # --- 5. AVALIAÇÃO E NOTAS ---
+        elif atleta_a != "Selecione..." and atleta_b != "Selecione...":
+            st.header("4. Avaliação")
+            st.info(f"Avaliando o critério: **{criterio}**")
+            
+            col_nota_a, col_nota_b = st.columns(2)
+            
+            with col_nota_a:
+                st.markdown(f"### {atleta_a}")
+                nota_a = st.slider(f"Nota para {atleta_a}", min_value=5, max_value=10, value=7, step=1)
+                
+            with col_nota_b:
+                st.markdown(f"### {atleta_b}")
+                nota_b = st.slider(f"Nota para {atleta_b}", min_value=5, max_value=10, value=7, step=1)
+                
+            # --- 6. ENVIO PARA O GOOGLE SHEETS ---
+            st.markdown("---")
+            if st.button("Enviar Notas", use_container_width=True, type="primary"):
+                if not mestre_avaliador:
+                    st.error("Atenção: O preenchimento do nome do Mestre/Avaliador é obrigatório!")
+                else:
+                    agora = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+                    
+                    # Separa a avaliação em duas linhas distintas para o ranking individual
+                    linha_a = [agora, atleta_a, categoria_selecionada, mestre_avaliador, criterio, nota_a]
+                    linha_b = [agora, atleta_b, categoria_selecionada, mestre_avaliador, criterio, nota_b]
+                    
+                    if worksheet:
+                        try:
+                            worksheet.append_rows([linha_a, linha_b])
+                            st.success("✅ Notas enviadas com sucesso para a nuvem!")
+                        except Exception as e:
+                            st.error(f"Erro ao enviar para o Google Sheets: {e}")
+                    else:
+                        st.warning("⚠️ Modo de Teste: Conexão com o Google Sheets não detectada. Dados gerados:")
+                        st.json([linha_a, linha_b])
