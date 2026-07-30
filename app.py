@@ -5,7 +5,6 @@ st.set_page_config(page_title="Capoeira CS:GO", layout="centered")
 
 st.title("🏆 Avaliação & Ranking")
 
-# A lista de graduações
 graduacoes = [
     "Aluno (Branca-Amarela)", 
     "Graduado (Azul)", 
@@ -16,7 +15,6 @@ graduacoes = [
     "Mestre (Vermelha)"
 ]
 
-# Nova lógica: As faixas etárias mudam dependendo da graduação escolhida!
 def obter_faixas_etarias(graduacao):
     if graduacao == "Aluno (Branca-Amarela)":
         return ["Infantil", "Juvenil", "Adulto", "Sênior (Idosos)"]
@@ -29,10 +27,7 @@ tab1, tab2 = st.tabs(["📝 Avaliar Bateria", "📊 Ranking (Estilo CS)"])
 with tab1:
     st.subheader("Bateria Atual")
     
-    # Primeiro escolhe a graduação
     graduacao_selecionada = st.selectbox("Graduação", graduacoes)
-    
-    # Depois o sistema carrega as idades certas para aquela graduação
     faixa_etaria_selecionada = st.selectbox("Faixa Etária", obter_faixas_etarias(graduacao_selecionada))
     
     col1, col2 = st.columns(2)
@@ -47,9 +42,11 @@ with tab1:
     volume = st.slider("2. Volume de Jogo", 0.0, 10.0, 5.0, 0.5)
     
     st.write("---")
-    st.subheader("Estatísticas ('Kills')")
+    st.subheader("Estatísticas ('Kills' e Faltas)")
     quedas = st.number_input("Quedas aplicadas (Takedowns)", min_value=0, step=1)
     floreios = st.number_input("Floreios / Acrobacias", min_value=0, step=1)
+    # NOVO MARCADOR: Golpes Sujos
+    golpes_sujos = st.number_input("Golpes Sujos (Faltas/Penalidades)", min_value=0, step=1, help="Engloba cabeçadas traumatizantes, agarrões, cotoveladas, etc.")
 
     if st.button("ENVIAR AVALIAÇÃO", use_container_width=True):
         st.success(f"✅ Notas enviadas! Categoria: {graduacao_selecionada} - {faixa_etaria_selecionada}")
@@ -58,11 +55,10 @@ with tab1:
 with tab2:
     st.subheader("Tabela de Classificação")
     
-    # O locutor agora filtra por duas coisas para achar a categoria exata
     filtro_grad = st.selectbox("Ver ranking da Graduação:", graduacoes)
     filtro_idade = st.selectbox("Ver ranking da Faixa Etária:", obter_faixas_etarias(filtro_grad))
     
-    # Dados simulados atualizados para testar os filtros
+    # Dados simulados atualizados incluindo a coluna de Golpes Sujos
     dados = {
         "Nº": [135, 42, 7, 88, 12, 199, 50],
         "Apelido": ["Macaco", "Vento", "Faísca", "Muralha", "Sombra", "Trovão", "Bala"],
@@ -86,15 +82,20 @@ with tab2:
         ],
         "Pts Totais": [45.5, 42.0, 39.5, 45.5, 30.0, 38.0, 48.0],
         "Quedas (Kills)": [5, 2, 4, 1, 0, 3, 6],
-        "Floreios (HS)": [3, 8, 2, 0, 1, 4, 5]
+        "Floreios (HS)": [3, 8, 2, 0, 1, 4, 5],
+        "Golpes Sujos": [0, 1, 0, 0, 2, 0, 0] # Simulação de faltas
     }
     
     df = pd.DataFrame(dados)
     
-    # A MÁGICA DOS FILTROS: Mostra apenas quem tem a graduação E a idade escolhidas
     df_filtrado = df[(df["Graduação"] == filtro_grad) & (df["Faixa Etária"] == filtro_idade)]
         
-    df_filtrado = df_filtrado.sort_values(by=["Pts Totais", "Quedas (Kills)", "Floreios (HS)"], ascending=[False, False, False])
+    # LÓGICA DE DESEMPATE ATUALIZADA:
+    # 1º Mais Pontos | 2º Menos Golpes Sujos (ascending=True) | 3º Mais Quedas | 4º Mais Floreios
+    df_filtrado = df_filtrado.sort_values(
+        by=["Pts Totais", "Golpes Sujos", "Quedas (Kills)", "Floreios (HS)"], 
+        ascending=[False, True, False, False]
+    )
     
     def colorir_graduacao(valor):
         cores = {
@@ -110,7 +111,6 @@ with tab2:
 
     tabela_colorida = df_filtrado.style.map(colorir_graduacao, subset=["Graduação"])
     
-    # Se a tabela ficar vazia (não tem simulado pra todas), mostra um aviso
     if df_filtrado.empty:
         st.warning("Nenhum atleta nesta categoria (nos dados simulados atuais).")
     else:
