@@ -17,7 +17,7 @@ def conectar_planilha():
         client = gspread.authorize(creds)
         
         # IMPORTANTE: Substitua o texto abaixo pelo ID real da sua planilha do Google Sheets
-        sheet = client.open_by_key("COLOQUE_AQUI_O_ID_DA_SUA_PLANILHA") 
+        sheet = client.open_by_key("1-OfCbo6PyGnU1J5l1akeidIdqQOR4N3VBakvwiOe344") 
         return sheet.worksheet("Dados_Brutos")
     except Exception as e:
         return None
