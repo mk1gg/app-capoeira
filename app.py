@@ -1,116 +1,88 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
 import gspread
 from google.oauth2.service_account import Credentials
 
-# --- 1. CONFIGURAÇÃO DA PÁGINA ---
-st.set_page_config(page_title="Avaliação - Campeonato de Capoeira", layout="centered")
+# ==========================================
+# 1. AUTENTICAÇÃO E CONEXÃO COM O GOOGLE SHEETS
+# ==========================================
+escopos = ['https://www.googleapis.com/auth/spreadsheets']
+credenciais_dict = dict(st.secrets["gcp_service_account"])
+credenciais = Credentials.from_service_account_info(credenciais_dict, scopes=escopos)
+cliente = gspread.authorize(credenciais)
 
-# --- 2. CONEXÃO COM O GOOGLE SHEETS ---
-def conectar_planilha():
-    try:
-        scopes = ["https://www.googleapis.com/auth/spreadsheets"]
-        # As credenciais da sua conta de serviço Google (JSON) devem ficar no st.secrets do GitHub/Streamlit
-        creds_dict = st.secrets["gcp_service_account"]
-        creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
-        client = gspread.authorize(creds)
-        
-        # IMPORTANTE: Substitua o texto abaixo pelo ID real da sua planilha do Google Sheets
-        sheet = client.open_by_key("1-OfCbo6PyGnU1J5l1akeidIdqQOR4N3VBakvwiOe344") 
-        return sheet.worksheet("Dados_Brutos")
-    except Exception as e:
-        return None
+# Substitua pelo ID real da sua planilha
+ID_PLANILHA = "1-OfCbo6PyGnU1J5l1akeidIdqQOR4N3VBakvwiOe344"
+planilha = cliente.open_by_key(ID_PLANILHA)
 
-worksheet = conectar_planilha()
+# Puxando as abas
+aba_base = planilha.worksheet("Base_Atletas")
+aba_brutos = planilha.worksheet("Dados_Brutos")
 
-# --- 3. INTERFACE PRINCIPAL ---
-st.title("🏆 Campeonato de Capoeira - Avaliação")
+# Transformando em tabelas
+df_base = pd.DataFrame(aba_base.get_all_records())
+df_brutos = pd.DataFrame(aba_brutos.get_all_records())
 
-# Identificação do Mestre e do Critério
-st.header("1. Identificação do Avaliador")
-col_mestre, col_criterio = st.columns(2)
 
-with col_mestre:
-    mestre_avaliador = st.text_input("Nome do Mestre/Avaliador:")
+# ==========================================
+# 2. INTERFACE E LÓGICA DE AVALIAÇÃO
+# ==========================================
+st.write("## Avaliação da Roda")
 
-with col_criterio:
-    criterio = st.selectbox("Qual critério você está avaliando?", 
-                            ["Tradição", "Volume de Jogo", "Técnica"])
+nome_avaliador = st.selectbox("Quem é você?", ["Selecione...", "Mestre 1", "Mestre 2", "Mestre 3"])
 
-# Carregamento da Planilha de Atletas
-st.header("2. Base de Atletas")
-arquivo_upl = st.file_uploader("Carregue a planilha de atletas (Excel ou CSV)", type=["xlsx", "csv"])
-
-if arquivo_upl is not None:
-    # Leitura baseada na extensão do arquivo
-    if arquivo_upl.name.endswith('.csv'):
-        df_atletas = pd.read_csv(arquivo_upl)
-    else:
-        df_atletas = pd.read_excel(arquivo_upl)
+if nome_avaliador != "Selecione...":
     
-    # Verificação das colunas obrigatórias
-    colunas_necessarias = ['Nº', 'Nome', 'Categoria']
-    if not all(col in df_atletas.columns for col in colunas_necessarias):
-        st.error(f"Erro: A planilha deve conter exatamente as colunas: {', '.join(colunas_necessarias)}")
+    # Lógica de contagem de votos para sumir com o nome
+    if not df_brutos.empty and 'Nome do Atleta' in df_brutos.columns:
+        contagem_votos = df_brutos['Nome do Atleta'].value_counts()
     else:
-        st.success(f"Planilha carregada com sucesso! Total de atletas: {len(df_atletas)}")
+        contagem_votos = {}
+    
+    # Filtra quem tem menos de 3 votos
+    atletas_disponiveis = [
+        atleta for atleta in df_base['Nome'] 
+        if contagem_votos.get(atleta, 0) < 3
+    ]
+
+    st.write("---")
+    st.write("### Selecione o Jogo (Digite o número da camisa)")
+    
+    colA, colB = st.columns(2)
+    with colA:
+        atleta_1 = st.selectbox("Atleta 1:", ["Selecione..."] + atletas_disponiveis, key="a1")
+    with colB:
+        atleta_2 = st.selectbox("Atleta 2:", ["Selecione..."] + atletas_disponiveis, key="a2")
         
-        # --- 4. SELEÇÃO DA BATERIA ---
-        st.header("3. Bateria 1x1")
+    if atleta_1 != "Selecione..." and atleta_2 != "Selecione..." and atleta_1 != atleta_2:
         
-        # Lista categorias únicas em ordem alfabética
-        categorias_disponiveis = df_atletas['Categoria'].dropna().unique().tolist()
-        categorias_disponiveis.sort()
+        st.write("---")
+        col_notas_1, divisor, col_notas_2 = st.columns([1, 0.1, 1])
         
-        categoria_selecionada = st.selectbox("Selecione a Categoria da Bateria:", categorias_disponiveis)
-        
-        # Filtra os atletas pela categoria selecionada
-        df_categoria = df_atletas[df_atletas['Categoria'] == categoria_selecionada]
-        lista_nomes = df_categoria['Nome'].tolist()
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            atleta_a = st.selectbox("Atleta A:", ["Selecione..."] + lista_nomes)
-        with col2:
-            atleta_b = st.selectbox("Atleta B:", ["Selecione..."] + lista_nomes)
+        with col_notas_1:
+            st.write(f"**Notas: {atleta_1}**")
+            t1 = st.number_input("Tradição", 0.0, 10.0, step=0.1, key="t1")
+            v1 = st.number_input("Volume", 0.0, 10.0, step=0.1, key="v1")
+            tc1 = st.number_input("Técnica", 0.0, 10.0, step=0.1, key="tc1")
             
-        if atleta_a != "Selecione..." and atleta_b != "Selecione..." and atleta_a == atleta_b:
-            st.error("Erro: Selecione atletas diferentes para compor a bateria.")
+        with col_notas_2:
+            st.write(f"**Notas: {atleta_2}**")
+            t2 = st.number_input("Tradição", 0.0, 10.0, step=0.1, key="t2")
+            v2 = st.number_input("Volume", 0.0, 10.0, step=0.1, key="v2")
+            tc2 = st.number_input("Técnica", 0.0, 10.0, step=0.1, key="tc2")
+
+        if st.button("Enviar Notas do Jogo"):
             
-        # --- 5. AVALIAÇÃO E NOTAS ---
-        elif atleta_a != "Selecione..." and atleta_b != "Selecione...":
-            st.header("4. Avaliação")
-            st.info(f"Avaliando o critério: **{criterio}**")
+            # Pega a data e hora atual
+            data_hora = pd.Timestamp.now().strftime("%d/%m/%Y %H:%M:%S")
             
-            col_nota_a, col_nota_b = st.columns(2)
+            # Prepara as duas linhas para enviar ao Sheets
+            linha_atleta_1 = [data_hora, nome_avaliador, atleta_1, t1, v1, tc1]
+            linha_atleta_2 = [data_hora, nome_avaliador, atleta_2, t2, v2, tc2]
             
-            with col_nota_a:
-                st.markdown(f"### {atleta_a}")
-                nota_a = st.slider(f"Nota para {atleta_a}", min_value=5, max_value=10, value=7, step=1)
-                
-            with col_nota_b:
-                st.markdown(f"### {atleta_b}")
-                nota_b = st.slider(f"Nota para {atleta_b}", min_value=5, max_value=10, value=7, step=1)
-                
-            # --- 6. ENVIO PARA O GOOGLE SHEETS ---
-            st.markdown("---")
-            if st.button("Enviar Notas", use_container_width=True, type="primary"):
-                if not mestre_avaliador:
-                    st.error("Atenção: O preenchimento do nome do Mestre/Avaliador é obrigatório!")
-                else:
-                    agora = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-                    
-                    # Separa a avaliação em duas linhas distintas para o ranking individual
-                    linha_a = [agora, atleta_a, categoria_selecionada, mestre_avaliador, criterio, nota_a]
-                    linha_b = [agora, atleta_b, categoria_selecionada, mestre_avaliador, criterio, nota_b]
-                    
-                    if worksheet:
-                        try:
-                            worksheet.append_rows([linha_a, linha_b])
-                            st.success("✅ Notas enviadas com sucesso para a nuvem!")
-                        except Exception as e:
-                            st.error(f"Erro ao enviar para o Google Sheets: {e}")
-                    else:
-                        st.warning("⚠️ Modo de Teste: Conexão com o Google Sheets não detectada. Dados gerados:")
-                        st.json([linha_a, linha_b])
+            # Injeta na aba Dados_Brutos
+            aba_brutos.append_row(linha_atleta_1)
+            aba_brutos.append_row(linha_atleta_2)
+            
+            st.success("Notas registradas com sucesso! Atualizando painel...")
+            st.rerun()
