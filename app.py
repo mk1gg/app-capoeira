@@ -68,12 +68,10 @@ lista_infrações = [
 if nome_avaliador.strip() != "" and criterio_avaliador != "Selecione...":
     df_base, df_brutos = carregar_dados()
     
-    # Travas de segurança para garantir que as colunas existam
     if 'Subcategoria' not in df_base.columns or 'Gênero' not in df_base.columns:
         st.error("⚠️ Atenção: Certifique-se de que as colunas 'Gênero' e 'Subcategoria' existam na aba 'Base_Atletas'.")
         st.stop()
         
-    # Tratamento de dados contra espaços em branco e erros de digitação
     df_base['Num_Str'] = df_base['Número'].astype(str).str.strip()
     df_base['Nome'] = df_base['Nome'].astype(str).str.strip()
     df_base['Identificador_Completo'] = df_base['Num_Str'] + " - " + df_base['Nome']
@@ -90,7 +88,7 @@ if nome_avaliador.strip() != "" and criterio_avaliador != "Selecione...":
     if genero_escolhido != "Selecione...":
         df_base_gen = df_base[df_base['Gênero'] == genero_escolhido]
         
-        # FILTRO 2: CATEGORIA MAIOR
+        # FILTRO 2: CATEGORIA
         categorias_existentes = [c for c in df_base_gen['Categoria'].unique().tolist() if c != ""]
         categoria_escolhida = st.selectbox("Selecione a Categoria:", ["Selecione..."] + sorted(categorias_existentes))
         
@@ -102,19 +100,22 @@ if nome_avaliador.strip() != "" and criterio_avaliador != "Selecione...":
             subcategoria_escolhida = st.selectbox("Selecione a Subcategoria:", ["Selecione..."] + sorted(subcategorias_existentes))
             
             if subcategoria_escolhida != "Selecione...":
-                
-                # Filtro final exato
                 df_base_filtrada = df_base_cat[df_base_cat['Subcategoria'] == subcategoria_escolhida]
                 
-                if not df_brutos.empty and 'Nome do Atleta' in df_brutos.columns and 'Fase' in df_brutos.columns:
+                if not df_brutos.empty and 'Nome do Atleta' in df_brutos.columns and 'Fase' in df_brutos.columns and 'Avaliador' in df_brutos.columns:
                     votos_na_fase = df_brutos[df_brutos['Fase'] == fase_atual]
                     contagem_votos = votos_na_fase['Nome do Atleta'].astype(str).str.strip().value_counts()
+                    
+                    nome_formatado = nome_avaliador.strip()
+                    votos_deste_avaliador = votos_na_fase[votos_na_fase['Avaliador'].astype(str).str.strip() == nome_formatado]
+                    ja_avaliados_por_mim = votos_deste_avaliador['Nome do Atleta'].astype(str).str.strip().unique().tolist()
                 else:
                     contagem_votos = {}
+                    ja_avaliados_por_mim = []
                 
                 numeros_disponiveis = [
                     num for num, ident in zip(df_base_filtrada['Num_Str'], df_base_filtrada['Identificador_Completo'])
-                    if contagem_votos.get(ident, 0) < 3
+                    if contagem_votos.get(ident, 0) < 3 and ident not in ja_avaliados_por_mim
                 ]
 
                 st.write("### Selecione a Dupla (Pelo número da camisa)")
@@ -165,7 +166,6 @@ if nome_avaliador.strip() != "" and criterio_avaliador != "Selecione...":
                     if st.button("Enviar Notas do Jogo"):
                         data_hora = pd.Timestamp.now().strftime("%d/%m/%Y %H:%M:%S")
                         
-                        # Concatena Gênero, Categoria e Subcategoria para o Banco de Dados
                         categoria_final = f"{genero_escolhido} - {categoria_escolhida} - {subcategoria_escolhida}"
                         
                         linha_1 = [data_hora, nome_avaliador, ident_1, categoria_final, t1, v1, tc1, fase_atual, faltas_str_1]
@@ -177,5 +177,12 @@ if nome_avaliador.strip() != "" and criterio_avaliador != "Selecione...":
                         carregar_dados.clear()
                         atualizar_painel_de_chaves()
                         
-                        st.success(f"Notas registradas para {categoria_final}! Painel atualizado.")
+                        # Verifica se este envio completou os 3 votos do atleta 1
+                        votos_agora = contagem_votos.get(ident_1, 0) + 1
+                        
+                        if votos_agora == 3:
+                            st.success(f"✅ Notas ENVIADAS! Todos os 3 mestres já votaram na dupla {atleta_1_num} e {atleta_2_num}.")
+                        else:
+                            st.success(f"✅ Nota enviada! (Votos registrados na dupla até agora: {votos_agora}/3)")
+                            
                         st.rerun()
