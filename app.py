@@ -22,9 +22,20 @@ def carregar_dados():
     return pd.DataFrame(aba_base.get_all_records()), pd.DataFrame(aba_brutos.get_all_records())
 
 # ==========================================
-# 2. MOTOR DE ATUALIZAÇÃO DO PAINEL (BLOCOS DEFINITIVOS)
+# 2. MOTOR DE ATUALIZAÇÃO DO PAINEL (LADO A LADO E COM TRAVA)
 # ==========================================
 def atualizar_painel_de_chaves():
+    
+    fases_ordem = [
+        "Mata-mata - 1ª Rodada",
+        "Mata-mata - 2ª Rodada",
+        "Mata-mata - 3ª Rodada",
+        "Mata-mata - 4ª Rodada",
+        "Mata-mata - 5ª Rodada",
+        "Mata-mata - 6ª Rodada",
+        "Final"
+    ]
+    
     base_records = aba_base.get_all_records()
     brutos_records = aba_brutos.get_all_records()
     
@@ -32,7 +43,6 @@ def atualizar_painel_de_chaves():
         return
         
     df_base = pd.DataFrame(base_records)
-    
     for col in ['Gênero', 'Categoria', 'Subcategoria', 'Nome', 'Número']:
         if col in df_base.columns:
             df_base[col] = df_base[col].astype(str).str.strip()
@@ -43,52 +53,95 @@ def atualizar_painel_de_chaves():
         df_brutos = pd.DataFrame(brutos_records)
         for col in ['Tradição', 'Volume', 'Técnica']:
             df_brutos[col] = pd.to_numeric(df_brutos[col], errors='coerce').fillna(0)
-            
         df_brutos['Nota Total'] = df_brutos['Tradição'] + df_brutos['Volume'] + df_brutos['Técnica']
-        
-        ranking = df_brutos.groupby(['Nome do Atleta']).agg(
-            Votos=('Avaliador', 'count'),
-            Pontuação_Final=('Nota Total', 'sum'),
-            Faltas=('Punições/Faltas', lambda x: ' | '.join(filter(lambda v: v != "Nenhuma" and str(v).strip() != "", x)))
-        ).reset_index()
-        
-        df_final = pd.merge(df_base, ranking, left_on='Identificador_Completo', right_on='Nome do Atleta', how='left')
     else:
-        df_final = df_base.copy()
-        df_final['Votos'] = 0
-        df_final['Pontuação_Final'] = 0
-        df_final['Faltas'] = "Nenhuma"
+        df_brutos = pd.DataFrame(columns=['Fase', 'Nome do Atleta', 'Tradição', 'Volume', 'Técnica', 'Nota Total', 'Punições/Faltas'])
 
-    df_final['Pontuação_Final'] = df_final['Pontuação_Final'].fillna(0)
-    df_final['Votos'] = df_final['Votos'].fillna(0)
-    df_final['Faltas'] = df_final['Faltas'].fillna("Nenhuma")
-    df_final['Faltas'] = df_final['Faltas'].replace("", "Nenhuma")
-    
-    df_final = df_final.sort_values(by=['Gênero', 'Categoria', 'Subcategoria', 'Pontuação_Final'], ascending=[True, True, True, False])
-    
     dados_painel = []
-    grupos = df_final.groupby(['Gênero', 'Categoria', 'Subcategoria'], sort=False)
+    grupos = df_base.groupby(['Gênero', 'Categoria', 'Subcategoria'], sort=False)
     
     for nome_grupo, grupo_df in grupos:
         gen, cat, sub = nome_grupo
         if not str(gen).strip(): 
             continue
             
-        titulo_bloco = f"🏆 {str(gen).upper()} | {str(cat).upper()} | {str(sub).upper()}"
-        dados_painel.append([titulo_bloco, "", "", "", ""])
-        dados_painel.append(["Número", "Nome do Atleta", "Pontuação Final", "Juízes que Votaram", "Histórico de Faltas"])
+        titulo_base = f"🏆 {str(gen).upper()} | {str(cat).upper()} | {str(sub).upper()}"
+        tabelas_fases = []
         
-        for _, row in grupo_df.iterrows():
-            dados_painel.append([
-                row['Número'], 
-                row['Nome'], 
-                row['Pontuação_Final'], 
-                f"{int(row['Votos'])}/3", 
-                row['Faltas']
-            ])
+        # Variável que controla o desbloqueio da próxima tabela
+        fase_anterior_concluida = True 
+        
+        for idx_fase, fase in enumerate(fases_ordem):
+            df_fase = df_brutos[df_brutos['Fase'] == fase] if not df_brutos.empty and 'Fase' in df_brutos.columns else pd.DataFrame()
+            tem_votos_nesta_fase = not df_fase.empty
             
-        dados_painel.append(["", "", "", "", ""])
-        dados_painel.append(["", "", "", "", ""])
+            # REGRA DE EXIBIÇÃO: Mostra a 1ª rodada, ou se já houver votos ali, ou se a anterior fechou 100%
+            mostrar_fase = (idx_fase == 0) or tem_votos_nesta_fase or fase_anterior_concluida
+            
+            if not mostrar_fase:
+                break
+                
+            if not df_fase.empty:
+                ranking = df_fase.groupby('Nome do Atleta').agg(
+                    Votos=('Avaliador', 'count'),
+                    Pontuação_Final=('Nota Total', 'sum'),
+                    Faltas=('Punições/Faltas', lambda x: ' | '.join(filter(lambda v: v != "Nenhuma" and str(v).strip() != "", x)))
+                ).reset_index()
+            else:
+                ranking = pd.DataFrame(columns=['Nome do Atleta', 'Votos', 'Pontuação_Final', 'Faltas'])
+                
+            df_final = pd.merge(grupo_df, ranking, left_on='Identificador_Completo', right_on='Nome do Atleta', how='left')
+            
+            if idx_fase == 0:
+                df_final['Votos'] = df_final['Votos'].fillna(0)
+                df_final['Pontuação_Final'] = df_final['Pontuação_Final'].fillna(0)
+                df_final['Faltas'] = df_final['Faltas'].fillna("Nenhuma")
+            else:
+                df_final = df_final[df_final['Votos'] > 0].copy()
+                
+            df_final['Faltas'] = df_final['Faltas'].replace("", "Nenhuma")
+            df_final = df_final.sort_values(by=['Pontuação_Final'], ascending=False)
+            
+            tabela_atual = []
+            tabela_atual.append([f"{titulo_base} - {fase.upper()}", "", "", "", ""])
+            tabela_atual.append(["Número", "Nome do Atleta", "Pontuação Final", "Juízes", "Faltas"])
+            
+            for _, row in df_final.iterrows():
+                tabela_atual.append([
+                    row['Número'], 
+                    row['Nome'], 
+                    row['Pontuação_Final'], 
+                    f"{int(row['Votos'])}/3", 
+                    row['Faltas']
+                ])
+                
+            tabelas_fases.append(tabela_atual)
+            
+            # CÁLCULO DA TRAVA: A fase só é considerada "concluída" se TODOS os listados nela tiverem 3 votos.
+            fase_anterior_concluida = all(v == 3 for v in df_final['Votos']) and len(df_final) > 0
+            
+        if tabelas_fases:
+            max_rows = max(len(t) for t in tabelas_fases)
+            
+            for i in range(max_rows):
+                linha_combinada = []
+                for idx_t, tabela in enumerate(tabelas_fases):
+                    if i < len(tabela):
+                        linha_combinada.extend(tabela[i])
+                    else:
+                        linha_combinada.extend(["", "", "", "", ""])
+                        
+                    if idx_t < len(tabelas_fases) - 1:
+                        linha_combinada.append("") 
+                        
+                dados_painel.append(linha_combinada)
+                
+        dados_painel.append([])
+        dados_painel.append([])
+        
+    max_cols = max((len(row) for row in dados_painel if row), default=0)
+    for row in dados_painel:
+        row.extend([""] * (max_cols - len(row)))
         
     aba_painel.clear()
     if dados_painel:
@@ -99,14 +152,18 @@ def atualizar_painel_de_chaves():
 # ==========================================
 st.write("## Avaliação da Roda")
 
-# ==========================================
-# LISTA DE FASES ATUALIZADA (Sem Oitavas e Quartas)
-# ==========================================
-fases_campeonato = ["Eliminatórias", "Mata-mata", "Semifinal", "Final"]
+fases_campeonato = [
+    "Mata-mata - 1ª Rodada",
+    "Mata-mata - 2ª Rodada",
+    "Mata-mata - 3ª Rodada",
+    "Mata-mata - 4ª Rodada",
+    "Mata-mata - 5ª Rodada",
+    "Mata-mata - 6ª Rodada",
+    "Final"
+]
 fase_atual = st.selectbox("Fase Atual do Campeonato:", fases_campeonato)
 
 nome_avaliador = st.text_input("Digite o seu nome de Avaliador:")
-
 criterio_avaliador = st.selectbox("Qual critério você está avaliando?", ["Selecione...", "Tradição", "Volume", "Técnica"])
 
 lista_infrações = [
