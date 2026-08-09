@@ -99,7 +99,10 @@ def atualizar_painel_de_chaves():
 # ==========================================
 st.write("## Avaliação da Roda")
 
-fases_campeonato = ["Eliminatórias", "Oitavas de Final", "Quartas de Final", "Semifinal", "Final"]
+# ==========================================
+# LISTA DE FASES ATUALIZADA (Sem Oitavas e Quartas)
+# ==========================================
+fases_campeonato = ["Eliminatórias", "Mata-mata", "Semifinal", "Final"]
 fase_atual = st.selectbox("Fase Atual do Campeonato:", fases_campeonato)
 
 nome_avaliador = st.text_input("Digite o seu nome de Avaliador:")
