@@ -68,94 +68,91 @@ lista_infrações = [
 if nome_avaliador.strip() != "" and criterio_avaliador != "Selecione...":
     df_base, df_brutos = carregar_dados()
     
+    # Tratamento de dados para evitar erros de leitura
     df_base['Num_Str'] = df_base['Número'].astype(str).str.strip()
     df_base['Nome'] = df_base['Nome'].astype(str).str.strip()
     df_base['Identificador_Completo'] = df_base['Num_Str'] + " - " + df_base['Nome']
+    df_base['Categoria'] = df_base['Categoria'].astype(str).str.strip()
     
-    # Cria um dicionário rápido para descobrir a categoria de cada número
-    dict_categorias = dict(zip(df_base['Num_Str'], df_base['Categoria'])) if 'Categoria' in df_base.columns else {}
-    
-    if not df_brutos.empty and 'Nome do Atleta' in df_brutos.columns and 'Fase' in df_brutos.columns:
-        votos_na_fase = df_brutos[df_brutos['Fase'] == fase_atual]
-        contagem_votos = votos_na_fase['Nome do Atleta'].astype(str).str.strip().value_counts()
-    else:
-        contagem_votos = {}
-    
-    numeros_disponiveis = [
-        num for num, ident in zip(df_base['Num_Str'], df_base['Identificador_Completo'])
-        if contagem_votos.get(ident, 0) < 3
-    ]
-
     st.write("---")
-    st.write("### Selecione a Dupla (Pelo número da camisa)")
+    # Busca as categorias dinamicamente da sua planilha Base_Atletas
+    categorias_existentes = [c for c in df_base['Categoria'].unique().tolist() if c != ""]
+    categoria_escolhida = st.selectbox("Selecione a Categoria da Chave:", ["Selecione..."] + sorted(categorias_existentes))
     
-    colA, colB = st.columns(2)
-    with colA:
-        atleta_1_num = st.selectbox("Atleta 1 (Número):", ["Selecione..."] + numeros_disponiveis, key="a1")
-    
-    with colB:
-        # Lógica da Trava de Categoria
-        if atleta_1_num != "Selecione...":
-            categoria_alvo = dict_categorias.get(atleta_1_num, "")
-            # Filtra apenas quem é da mesma categoria e não é ele mesmo
-            se_escolhido = [
-                n for n in numeros_disponiveis 
-                if n != atleta_1_num and dict_categorias.get(n, "") == categoria_alvo
-            ]
+    if categoria_escolhida != "Selecione...":
+        
+        # O SISTEMA FILTRA A BASE INTEIRA APENAS PARA A CATEGORIA ESCOLHIDA
+        df_base_filtrada = df_base[df_base['Categoria'] == categoria_escolhida]
+        
+        if not df_brutos.empty and 'Nome do Atleta' in df_brutos.columns and 'Fase' in df_brutos.columns:
+            votos_na_fase = df_brutos[df_brutos['Fase'] == fase_atual]
+            contagem_votos = votos_na_fase['Nome do Atleta'].astype(str).str.strip().value_counts()
         else:
-            se_escolhido = []
-            
-        atleta_2_num = st.selectbox("Atleta 2 (Número):", ["Selecione..."] + se_escolhido, key="a2")
+            contagem_votos = {}
         
-    if atleta_1_num != "Selecione..." and atleta_2_num != "Selecione...":
-        
-        ident_1 = df_base.loc[df_base['Num_Str'] == atleta_1_num, 'Identificador_Completo'].values[0]
-        ident_2 = df_base.loc[df_base['Num_Str'] == atleta_2_num, 'Identificador_Completo'].values[0]
-        
-        categoria_a1 = dict_categorias.get(atleta_1_num, "")
-        categoria_a2 = dict_categorias.get(atleta_2_num, "")
+        # Disponibiliza apenas os números de quem é desta categoria e ainda não tem 3 votos
+        numeros_disponiveis = [
+            num for num, ident in zip(df_base_filtrada['Num_Str'], df_base_filtrada['Identificador_Completo'])
+            if contagem_votos.get(ident, 0) < 3
+        ]
 
-        st.write("---")
-        col_notas_1, divisor, col_notas_2 = st.columns([1, 0.1, 1])
+        st.write("### Selecione a Dupla (Pelo número da camisa)")
         
-        t1, v1, tc1 = 0, 0, 0
-        t2, v2, tc2 = 0, 0, 0
+        colA, colB = st.columns(2)
+        with colA:
+            atleta_1_num = st.selectbox("Atleta 1 (Número):", ["Selecione..."] + numeros_disponiveis, key="a1")
         
-        with col_notas_1:
-            st.write(f"**Notas do Nº {atleta_1_num}**")
-            if criterio_avaliador == "Tradição":
-                t1 = st.number_input("Tradição", min_value=5, max_value=10, value=5, step=1, key="t1")
-            elif criterio_avaliador == "Volume":
-                v1 = st.number_input("Volume", min_value=5, max_value=10, value=5, step=1, key="v1")
-            elif criterio_avaliador == "Técnica":
-                tc1 = st.number_input("Técnica", min_value=5, max_value=10, value=5, step=1, key="tc1")
+        with colB:
+            # Trava anti-clone (não pode lutar contra si mesmo)
+            se_escolhido = [n for n in numeros_disponiveis if n != atleta_1_num] if atleta_1_num != "Selecione..." else numeros_disponiveis
+            atleta_2_num = st.selectbox("Atleta 2 (Número):", ["Selecione..."] + se_escolhido, key="a2")
             
-            faltas_1 = st.multiselect("Registrar Golpe Sujo:", lista_infrações, key="f1")
-            faltas_str_1 = " | ".join(faltas_1) if faltas_1 else "Nenhuma"
+        if atleta_1_num != "Selecione..." and atleta_2_num != "Selecione...":
             
-        with col_notas_2:
-            st.write(f"**Notas do Nº {atleta_2_num}**")
-            if criterio_avaliador == "Tradição":
-                t2 = st.number_input("Tradição", min_value=5, max_value=10, value=5, step=1, key="t2")
-            elif criterio_avaliador == "Volume":
-                v2 = st.number_input("Volume", min_value=5, max_value=10, value=5, step=1, key="v2")
-            elif criterio_avaliador == "Técnica":
-                tc2 = st.number_input("Técnica", min_value=5, max_value=10, value=5, step=1, key="tc2")
+            ident_1 = df_base_filtrada.loc[df_base_filtrada['Num_Str'] == atleta_1_num, 'Identificador_Completo'].values[0]
+            ident_2 = df_base_filtrada.loc[df_base_filtrada['Num_Str'] == atleta_2_num, 'Identificador_Completo'].values[0]
+
+            st.write("---")
+            col_notas_1, divisor, col_notas_2 = st.columns([1, 0.1, 1])
+            
+            t1, v1, tc1 = 0, 0, 0
+            t2, v2, tc2 = 0, 0, 0
+            
+            with col_notas_1:
+                st.write(f"**Notas do Nº {atleta_1_num}**")
+                if criterio_avaliador == "Tradição":
+                    t1 = st.number_input("Tradição", min_value=5, max_value=10, value=5, step=1, key="t1")
+                elif criterio_avaliador == "Volume":
+                    v1 = st.number_input("Volume", min_value=5, max_value=10, value=5, step=1, key="v1")
+                elif criterio_avaliador == "Técnica":
+                    tc1 = st.number_input("Técnica", min_value=5, max_value=10, value=5, step=1, key="tc1")
                 
-            faltas_2 = st.multiselect("Registrar Golpe Sujo:", lista_infrações, key="f2")
-            faltas_str_2 = " | ".join(faltas_2) if faltas_2 else "Nenhuma"
+                faltas_1 = st.multiselect("Registrar Golpe Sujo:", lista_infrações, key="f1")
+                faltas_str_1 = " | ".join(faltas_1) if faltas_1 else "Nenhuma"
+                
+            with col_notas_2:
+                st.write(f"**Notas do Nº {atleta_2_num}**")
+                if criterio_avaliador == "Tradição":
+                    t2 = st.number_input("Tradição", min_value=5, max_value=10, value=5, step=1, key="t2")
+                elif criterio_avaliador == "Volume":
+                    v2 = st.number_input("Volume", min_value=5, max_value=10, value=5, step=1, key="v2")
+                elif criterio_avaliador == "Técnica":
+                    tc2 = st.number_input("Técnica", min_value=5, max_value=10, value=5, step=1, key="tc2")
+                    
+                faltas_2 = st.multiselect("Registrar Golpe Sujo:", lista_infrações, key="f2")
+                faltas_str_2 = " | ".join(faltas_2) if faltas_2 else "Nenhuma"
 
-        if st.button("Enviar Notas do Jogo"):
-            data_hora = pd.Timestamp.now().strftime("%d/%m/%Y %H:%M:%S")
-            
-            linha_1 = [data_hora, nome_avaliador, ident_1, categoria_a1, t1, v1, tc1, fase_atual, faltas_str_1]
-            linha_2 = [data_hora, nome_avaliador, ident_2, categoria_a2, t2, v2, tc2, fase_atual, faltas_str_2]
-            
-            aba_brutos.append_row(linha_1)
-            aba_brutos.append_row(linha_2)
-            
-            carregar_dados.clear()
-            atualizar_painel_de_chaves()
-            
-            st.success(f"Notas de {criterio_avaliador} registradas! Painel atualizado.")
-            st.rerun()
+            if st.button("Enviar Notas do Jogo"):
+                data_hora = pd.Timestamp.now().strftime("%d/%m/%Y %H:%M:%S")
+                
+                linha_1 = [data_hora, nome_avaliador, ident_1, categoria_escolhida, t1, v1, tc1, fase_atual, faltas_str_1]
+                linha_2 = [data_hora, nome_avaliador, ident_2, categoria_escolhida, t2, v2, tc2, fase_atual, faltas_str_2]
+                
+                aba_brutos.append_row(linha_1)
+                aba_brutos.append_row(linha_2)
+                
+                carregar_dados.clear()
+                atualizar_painel_de_chaves()
+                
+                st.success(f"Notas de {criterio_avaliador} registradas para a {categoria_escolhida}! Painel atualizado.")
+                st.rerun()
