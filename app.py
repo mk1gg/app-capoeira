@@ -22,30 +22,77 @@ def carregar_dados():
     return pd.DataFrame(aba_base.get_all_records()), pd.DataFrame(aba_brutos.get_all_records())
 
 # ==========================================
-# 2. MOTOR DE ATUALIZAÇÃO DO PAINEL
+# 2. MOTOR DE ATUALIZAÇÃO DO PAINEL (BLOCOS DEFINITIVOS)
 # ==========================================
 def atualizar_painel_de_chaves():
-    dados = aba_brutos.get_all_records()
-    if not dados:
+    base_records = aba_base.get_all_records()
+    brutos_records = aba_brutos.get_all_records()
+    
+    if not base_records:
         return
-    
-    df = pd.DataFrame(dados)
-    
-    for col in ['Tradição', 'Volume', 'Técnica']:
-        df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
         
-    df['Nota Total'] = df['Tradição'] + df['Volume'] + df['Técnica']
+    df_base = pd.DataFrame(base_records)
     
-    ranking = df.groupby(['Fase', 'Categoria', 'Nome do Atleta']).agg(
-        Votos=('Avaliador', 'count'),
-        Pontuação_Final=('Nota Total', 'sum'),
-        Faltas=('Punições/Faltas', lambda x: ' | '.join(filter(lambda v: v != "Nenhuma" and str(v).strip() != "", x)))
-    ).reset_index()
+    for col in ['Gênero', 'Categoria', 'Subcategoria', 'Nome', 'Número']:
+        if col in df_base.columns:
+            df_base[col] = df_base[col].astype(str).str.strip()
+            
+    df_base['Identificador_Completo'] = df_base['Número'] + " - " + df_base['Nome']
     
-    ranking = ranking.sort_values(by=['Fase', 'Categoria', 'Pontuação_Final'], ascending=[True, True, False])
+    if brutos_records:
+        df_brutos = pd.DataFrame(brutos_records)
+        for col in ['Tradição', 'Volume', 'Técnica']:
+            df_brutos[col] = pd.to_numeric(df_brutos[col], errors='coerce').fillna(0)
+            
+        df_brutos['Nota Total'] = df_brutos['Tradição'] + df_brutos['Volume'] + df_brutos['Técnica']
+        
+        ranking = df_brutos.groupby(['Nome do Atleta']).agg(
+            Votos=('Avaliador', 'count'),
+            Pontuação_Final=('Nota Total', 'sum'),
+            Faltas=('Punições/Faltas', lambda x: ' | '.join(filter(lambda v: v != "Nenhuma" and str(v).strip() != "", x)))
+        ).reset_index()
+        
+        df_final = pd.merge(df_base, ranking, left_on='Identificador_Completo', right_on='Nome do Atleta', how='left')
+    else:
+        df_final = df_base.copy()
+        df_final['Votos'] = 0
+        df_final['Pontuação_Final'] = 0
+        df_final['Faltas'] = "Nenhuma"
+
+    df_final['Pontuação_Final'] = df_final['Pontuação_Final'].fillna(0)
+    df_final['Votos'] = df_final['Votos'].fillna(0)
+    df_final['Faltas'] = df_final['Faltas'].fillna("Nenhuma")
+    df_final['Faltas'] = df_final['Faltas'].replace("", "Nenhuma")
     
+    df_final = df_final.sort_values(by=['Gênero', 'Categoria', 'Subcategoria', 'Pontuação_Final'], ascending=[True, True, True, False])
+    
+    dados_painel = []
+    grupos = df_final.groupby(['Gênero', 'Categoria', 'Subcategoria'], sort=False)
+    
+    for nome_grupo, grupo_df in grupos:
+        gen, cat, sub = nome_grupo
+        if not str(gen).strip(): 
+            continue
+            
+        titulo_bloco = f"🏆 {str(gen).upper()} | {str(cat).upper()} | {str(sub).upper()}"
+        dados_painel.append([titulo_bloco, "", "", "", ""])
+        dados_painel.append(["Número", "Nome do Atleta", "Pontuação Final", "Juízes que Votaram", "Histórico de Faltas"])
+        
+        for _, row in grupo_df.iterrows():
+            dados_painel.append([
+                row['Número'], 
+                row['Nome'], 
+                row['Pontuação_Final'], 
+                f"{int(row['Votos'])}/3", 
+                row['Faltas']
+            ])
+            
+        dados_painel.append(["", "", "", "", ""])
+        dados_painel.append(["", "", "", "", ""])
+        
     aba_painel.clear()
-    aba_painel.update([ranking.columns.values.tolist()] + ranking.values.tolist())
+    if dados_painel:
+        aba_painel.update("A1", dados_painel)
 
 # ==========================================
 # 3. INTERFACE DE AVALIAÇÃO DO MESTRE
@@ -81,21 +128,18 @@ if nome_avaliador.strip() != "" and criterio_avaliador != "Selecione...":
     
     st.write("---")
     
-    # FILTRO 1: GÊNERO
     generos_existentes = [g for g in df_base['Gênero'].unique().tolist() if g != ""]
     genero_escolhido = st.selectbox("Selecione o Gênero:", ["Selecione..."] + sorted(generos_existentes))
     
     if genero_escolhido != "Selecione...":
         df_base_gen = df_base[df_base['Gênero'] == genero_escolhido]
         
-        # FILTRO 2: CATEGORIA
         categorias_existentes = [c for c in df_base_gen['Categoria'].unique().tolist() if c != ""]
         categoria_escolhida = st.selectbox("Selecione a Categoria:", ["Selecione..."] + sorted(categorias_existentes))
         
         if categoria_escolhida != "Selecione...":
             df_base_cat = df_base_gen[df_base_gen['Categoria'] == categoria_escolhida]
             
-            # FILTRO 3: SUBCATEGORIA
             subcategorias_existentes = [s for s in df_base_cat['Subcategoria'].unique().tolist() if s != ""]
             subcategoria_escolhida = st.selectbox("Selecione a Subcategoria:", ["Selecione..."] + sorted(subcategorias_existentes))
             
@@ -177,7 +221,6 @@ if nome_avaliador.strip() != "" and criterio_avaliador != "Selecione...":
                         carregar_dados.clear()
                         atualizar_painel_de_chaves()
                         
-                        # Verifica se este envio completou os 3 votos do atleta 1
                         votos_agora = contagem_votos.get(ident_1, 0) + 1
                         
                         if votos_agora == 3:
