@@ -55,8 +55,10 @@ st.write("## Avaliação da Roda")
 fases_campeonato = ["Eliminatórias", "Oitavas de Final", "Quartas de Final", "Semifinal", "Final"]
 fase_atual = st.selectbox("Fase Atual do Campeonato:", fases_campeonato)
 
-# Agora o avaliador digita o próprio nome livremente
 nome_avaliador = st.text_input("Digite o seu nome de Avaliador:")
+
+# Novo seletor de especialidade do avaliador
+criterio_avaliador = st.selectbox("Qual critério você está avaliando?", ["Selecione...", "Tradição", "Volume", "Técnica"])
 
 lista_infrações = [
     "Cabeçadas traumatizantes", "Agarrões (baianada, pilão, bate estaca)", "Cotoveladas",
@@ -64,22 +66,20 @@ lista_infrações = [
     "Asfixiante", "Chaves", "Golpes baixos atingindo genitais"
 ]
 
-# Só exibe o resto se o avaliador preencher o nome
-if nome_avaliador.strip() != "":
+if nome_avaliador.strip() != "" and criterio_avaliador != "Selecione...":
     df_base, df_brutos = carregar_dados()
     
-    # Cria identificadores combinando Número e Nome para salvar na planilha
-    # Garante que a coluna Número seja tratada como texto para a interface
-    df_base['Num_Str'] = df_base['Número'].astype(str)
+    df_base['Num_Str'] = df_base['Número'].astype(str).str.strip()
+    df_base['Nome'] = df_base['Nome'].astype(str).str.strip()
     df_base['Identificador_Completo'] = df_base['Num_Str'] + " - " + df_base['Nome']
     
     if not df_brutos.empty and 'Nome do Atleta' in df_brutos.columns and 'Fase' in df_brutos.columns:
         votos_na_fase = df_brutos[df_brutos['Fase'] == fase_atual]
-        contagem_votos = votos_na_fase['Nome do Atleta'].value_counts()
+        contagem_votos = votos_na_fase['Nome do Atleta'].astype(str).str.strip().value_counts()
     else:
         contagem_votos = {}
     
-    # Filtra apenas os NÚMEROS dos atletas que têm menos de 3 avaliações
+    # Atletas continuam sumindo quando recebem 3 votos no total
     numeros_disponiveis = [
         num for num, ident in zip(df_base['Num_Str'], df_base['Identificador_Completo'])
         if contagem_votos.get(ident, 0) < 3
@@ -93,13 +93,11 @@ if nome_avaliador.strip() != "":
         atleta_1_num = st.selectbox("Atleta 1 (Número):", ["Selecione..."] + numeros_disponiveis, key="a1")
     
     with colB:
-        # Lógica Anti-Clone: Remove o número selecionado no Atleta 1 da lista do Atleta 2
         se_escolhido = [n for n in numeros_disponiveis if n != atleta_1_num] if atleta_1_num != "Selecione..." else numeros_disponiveis
         atleta_2_num = st.selectbox("Atleta 2 (Número):", ["Selecione..."] + se_escolhido, key="a2")
         
     if atleta_1_num != "Selecione..." and atleta_2_num != "Selecione...":
         
-        # Puxa o Identificador Completo e a Categoria para jogar no Google Sheets
         ident_1 = df_base.loc[df_base['Num_Str'] == atleta_1_num, 'Identificador_Completo'].values[0]
         ident_2 = df_base.loc[df_base['Num_Str'] == atleta_2_num, 'Identificador_Completo'].values[0]
         
@@ -109,26 +107,38 @@ if nome_avaliador.strip() != "":
         st.write("---")
         col_notas_1, divisor, col_notas_2 = st.columns([1, 0.1, 1])
         
+        # Variáveis zeradas por padrão
+        t1, v1, tc1 = 0, 0, 0
+        t2, v2, tc2 = 0, 0, 0
+        
         with col_notas_1:
             st.write(f"**Notas do Nº {atleta_1_num}**")
-            t1 = st.number_input("Tradição", min_value=5, max_value=10, value=5, step=1, key="t1")
-            v1 = st.number_input("Volume", min_value=5, max_value=10, value=5, step=1, key="v1")
-            tc1 = st.number_input("Técnica", min_value=5, max_value=10, value=5, step=1, key="tc1")
+            # Mostra apenas o critério que o mestre escolheu avaliar
+            if criterio_avaliador == "Tradição":
+                t1 = st.number_input("Tradição", min_value=5, max_value=10, value=5, step=1, key="t1")
+            elif criterio_avaliador == "Volume":
+                v1 = st.number_input("Volume", min_value=5, max_value=10, value=5, step=1, key="v1")
+            elif criterio_avaliador == "Técnica":
+                tc1 = st.number_input("Técnica", min_value=5, max_value=10, value=5, step=1, key="tc1")
+            
             faltas_1 = st.multiselect("Registrar Golpe Sujo:", lista_infrações, key="f1")
             faltas_str_1 = " | ".join(faltas_1) if faltas_1 else "Nenhuma"
             
         with col_notas_2:
             st.write(f"**Notas do Nº {atleta_2_num}**")
-            t2 = st.number_input("Tradição", min_value=5, max_value=10, value=5, step=1, key="t2")
-            v2 = st.number_input("Volume", min_value=5, max_value=10, value=5, step=1, key="v2")
-            tc2 = st.number_input("Técnica", min_value=5, max_value=10, value=5, step=1, key="tc2")
+            if criterio_avaliador == "Tradição":
+                t2 = st.number_input("Tradição", min_value=5, max_value=10, value=5, step=1, key="t2")
+            elif criterio_avaliador == "Volume":
+                v2 = st.number_input("Volume", min_value=5, max_value=10, value=5, step=1, key="v2")
+            elif criterio_avaliador == "Técnica":
+                tc2 = st.number_input("Técnica", min_value=5, max_value=10, value=5, step=1, key="tc2")
+                
             faltas_2 = st.multiselect("Registrar Golpe Sujo:", lista_infrações, key="f2")
             faltas_str_2 = " | ".join(faltas_2) if faltas_2 else "Nenhuma"
 
         if st.button("Enviar Notas do Jogo"):
             data_hora = pd.Timestamp.now().strftime("%d/%m/%Y %H:%M:%S")
             
-            # Envia o Identificador_Completo (Ex: 57 - João) para a planilha
             linha_1 = [data_hora, nome_avaliador, ident_1, categoria_a1, t1, v1, tc1, fase_atual, faltas_str_1]
             linha_2 = [data_hora, nome_avaliador, ident_2, categoria_a2, t2, v2, tc2, fase_atual, faltas_str_2]
             
@@ -138,5 +148,5 @@ if nome_avaliador.strip() != "":
             carregar_dados.clear()
             atualizar_painel_de_chaves()
             
-            st.success(f"Notas registradas! Painel atualizado.")
+            st.success(f"Notas de {criterio_avaliador} registradas! Painel atualizado.")
             st.rerun()
