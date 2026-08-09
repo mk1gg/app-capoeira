@@ -75,13 +75,13 @@ if nome_avaliador.strip() != "" and criterio_avaliador != "Selecione...":
     df_base['Categoria'] = df_base['Categoria'].astype(str).str.strip()
     
     st.write("---")
-    # Busca as categorias dinamicamente da sua planilha Base_Atletas
+    
+    # FILTRO: CATEGORIA
     categorias_existentes = [c for c in df_base['Categoria'].unique().tolist() if c != ""]
     categoria_escolhida = st.selectbox("Selecione a Categoria da Chave:", ["Selecione..."] + sorted(categorias_existentes))
     
     if categoria_escolhida != "Selecione...":
         
-        # O SISTEMA FILTRA A BASE INTEIRA APENAS PARA A CATEGORIA ESCOLHIDA
         df_base_filtrada = df_base[df_base['Categoria'] == categoria_escolhida]
         
         if not df_brutos.empty and 'Nome do Atleta' in df_brutos.columns and 'Fase' in df_brutos.columns:
@@ -90,7 +90,6 @@ if nome_avaliador.strip() != "" and criterio_avaliador != "Selecione...":
         else:
             contagem_votos = {}
         
-        # Disponibiliza apenas os números de quem é desta categoria e ainda não tem 3 votos
         numeros_disponiveis = [
             num for num, ident in zip(df_base_filtrada['Num_Str'], df_base_filtrada['Identificador_Completo'])
             if contagem_votos.get(ident, 0) < 3
@@ -103,7 +102,6 @@ if nome_avaliador.strip() != "" and criterio_avaliador != "Selecione...":
             atleta_1_num = st.selectbox("Atleta 1 (Número):", ["Selecione..."] + numeros_disponiveis, key="a1")
         
         with colB:
-            # Trava anti-clone (não pode lutar contra si mesmo)
             se_escolhido = [n for n in numeros_disponiveis if n != atleta_1_num] if atleta_1_num != "Selecione..." else numeros_disponiveis
             atleta_2_num = st.selectbox("Atleta 2 (Número):", ["Selecione..."] + se_escolhido, key="a2")
             
