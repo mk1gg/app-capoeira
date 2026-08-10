@@ -95,28 +95,20 @@ def atualizar_paineis_e_chaves():
         dados_chaves.append(["", "", "", "", ""])
         dados_chaves.append(["", "", "", "", ""])
         
-        # 2. ESCREVE O PAINEL DO LOCUTOR (COM TRAVA DE EXIBIÇÃO)
-        total_atletas_categoria = len(grupo_df)
+        # 2. ESCREVE O PAINEL DO LOCUTOR (APENAS O CAMPEÃO DA CATEGORIA)
         top2 = grupo_df.head(2)
-        
-        # Só exibe se a categoria for muito pequena (<=2) ou se eles já receberam votos na "Final"
         ja_chegaram_na_final = top2['Jogou_Final'].sum() > 0
         
-        if not top2.empty and (total_atletas_categoria <= 2 or ja_chegaram_na_final):
-            dados_finalistas.append([f"🎤 {str(gen).upper()} | {str(cat).upper()} | {str(sub).upper()}", "", ""])
-            dados_finalistas.append(["Nº", "Nome do Capoeirista", "Status"])
+        if not top2.empty and ja_chegaram_na_final:
+            campeao_row = top2.iloc[0] # Isola estritamente o primeiro colocado da tabela
             
-            for i, (_, row) in enumerate(top2.iterrows()):
-                # Se o atleta já recebeu 3 notas na fase "Final", ele é coroado. Se não, é finalista.
-                if row['Jogou_Final'] >= 3:
-                    status = "🏆 CAMPEÃO" if i == 0 else "🥈 VICE-CAMPEÃO"
-                else:
-                    status = "FINALISTA"
-                    
-                dados_finalistas.append([row['Número'], row['Nome'], status])
-                
-            dados_finalistas.append(["", "", ""])
-            dados_finalistas.append(["", "", ""])
+            # Só revela o campeão para o locutor quando os 3 votos da final terminarem
+            if campeao_row['Jogou_Final'] >= 3:
+                dados_finalistas.append([f"🎤 {str(gen).upper()} | {str(cat).upper()} | {str(sub).upper()}", "", ""])
+                dados_finalistas.append(["Nº", "Nome do Capoeirista", "Status"])
+                dados_finalistas.append([campeao_row['Número'], campeao_row['Nome'], "🏆 CAMPEÃO"])
+                dados_finalistas.append(["", "", ""])
+                dados_finalistas.append(["", "", ""])
 
     aba_painel.clear()
     if dados_chaves: aba_painel.update("A1", dados_chaves)
