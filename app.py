@@ -41,16 +41,13 @@ def atualizar_paineis_e_chaves():
             
     df_base['Identificador_Completo'] = df_base['Número'] + " - " + df_base['Nome']
     
-    # ----------------------------------
-    # CÁLCULO CUMULATIVO
-    # ----------------------------------
     if brutos_records:
         df_brutos = pd.DataFrame(brutos_records)
         for col in ['Tradição', 'Volume', 'Técnica']:
             df_brutos[col] = pd.to_numeric(df_brutos[col], errors='coerce').fillna(0)
         df_brutos['Nota Total'] = df_brutos['Tradição'] + df_brutos['Volume'] + df_brutos['Técnica']
         
-        # Rastreador de quem chegou e jogou a grande final
+        # Rastreador para saber se os atletas já estão disputando a Final oficial
         df_brutos['É_Final'] = df_brutos['Fase'] == 'Final'
         
         ranking = df_brutos.groupby('Nome do Atleta').agg(
@@ -70,7 +67,6 @@ def atualizar_paineis_e_chaves():
     df_final['Faltas'] = df_final['Faltas'].replace("", "Nenhuma")
     df_final['Jogou_Final'] = df_final['Jogou_Final'].fillna(0)
     
-    # ORDENAÇÃO MATADORA: O topo (Os 2 primeiros) sempre estarão corretos
     df_final = df_final.sort_values(by=['Pontuação_Acumulada'], ascending=False)
     
     dados_chaves = []
@@ -84,9 +80,9 @@ def atualizar_paineis_e_chaves():
             
         titulo_bloco = f"🏆 {str(gen).upper()} | {str(cat).upper()} | {str(sub).upper()}"
         
-        # 1. ESCREVE O PAINEL DE CHAVES (TODOS OS ATLETAS)
+        # 1. ESCREVE O PAINEL DE CHAVES (SOMA CUMULATIVA)
         dados_chaves.append([titulo_bloco, "", "", "", ""])
-        dados_chaves.append(["Número", "Nome do Atleta", "Pontuação Acumulada", "Total de Votos (Todas as Fases)", "Faltas"])
+        dados_chaves.append(["Número", "Nome do Atleta", "Pontuação Acumulada", "Total de Votos", "Faltas"])
         
         for _, row in grupo_df.iterrows():
             dados_chaves.append([
@@ -99,15 +95,20 @@ def atualizar_paineis_e_chaves():
         dados_chaves.append(["", "", "", "", ""])
         dados_chaves.append(["", "", "", "", ""])
         
-        # 2. ESCREVE O PAINEL DO LOCUTOR (APENAS O TOP 2 VERDE)
+        # 2. ESCREVE O PAINEL DO LOCUTOR (COM TRAVA DE EXIBIÇÃO)
+        total_atletas_categoria = len(grupo_df)
         top2 = grupo_df.head(2)
-        if not top2.empty:
+        
+        # Só exibe se a categoria for muito pequena (<=2) ou se eles já receberam votos na "Final"
+        ja_chegaram_na_final = top2['Jogou_Final'].sum() > 0
+        
+        if not top2.empty and (total_atletas_categoria <= 2 or ja_chegaram_na_final):
             dados_finalistas.append([f"🎤 {str(gen).upper()} | {str(cat).upper()} | {str(sub).upper()}", "", ""])
             dados_finalistas.append(["Nº", "Nome do Capoeirista", "Status"])
             
             for i, (_, row) in enumerate(top2.iterrows()):
-                # Se alguém no Top 2 tem voto de final, o campeonato acabou
-                if row['Jogou_Final'] > 0:
+                # Se o atleta já recebeu 3 notas na fase "Final", ele é coroado. Se não, é finalista.
+                if row['Jogou_Final'] >= 3:
                     status = "🏆 CAMPEÃO" if i == 0 else "🥈 VICE-CAMPEÃO"
                 else:
                     status = "FINALISTA"
@@ -117,13 +118,11 @@ def atualizar_paineis_e_chaves():
             dados_finalistas.append(["", "", ""])
             dados_finalistas.append(["", "", ""])
 
-    # Envia tudo para o Google Sheets de uma vez
     aba_painel.clear()
     if dados_chaves: aba_painel.update("A1", dados_chaves)
         
     aba_finalistas.clear()
     if dados_finalistas: aba_finalistas.update("A1", dados_finalistas)
-
 
 # ==========================================
 # 3. INTERFACE DE AVALIAÇÃO DO MESTRE
@@ -179,7 +178,7 @@ if nome_avaliador.strip() != "" and criterio_avaliador != "Selecione...":
             if subcategoria_escolhida != "Selecione...":
                 df_base_filtrada = df_base_cat[df_base_cat['Subcategoria'] == subcategoria_escolhida]
                 
-                # Bloqueio de votos duplos (Baseado estritamente na fase atual)
+                # Bloqueio de votos duplos na MESMA fase
                 if not df_brutos.empty and 'Nome do Atleta' in df_brutos.columns and 'Fase' in df_brutos.columns and 'Avaliador' in df_brutos.columns:
                     votos_na_fase = df_brutos[df_brutos['Fase'] == fase_atual]
                     contagem_votos = votos_na_fase['Nome do Atleta'].astype(str).str.strip().value_counts()
@@ -190,7 +189,6 @@ if nome_avaliador.strip() != "" and criterio_avaliador != "Selecione...":
                     contagem_votos = {}
                     ja_avaliados_por_mim = []
                 
-                # O Atleta some da lista SE JÁ TOMOU 3 VOTOS NESTA RODADA, garantindo que o locutor veja o andamento.
                 numeros_disponiveis = [
                     num for num, ident in zip(df_base_filtrada['Num_Str'], df_base_filtrada['Identificador_Completo'])
                     if contagem_votos.get(ident, 0) < 3 and ident not in ja_avaliados_por_mim
