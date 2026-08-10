@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
+import math
 
 # ==========================================
 # 1. AUTENTICAÇÃO E CONEXÃO COM CACHE
@@ -22,10 +23,9 @@ def carregar_dados():
     return pd.DataFrame(aba_base.get_all_records()), pd.DataFrame(aba_brutos.get_all_records())
 
 # ==========================================
-# 2. MOTOR DE ATUALIZAÇÃO DO PAINEL (LADO A LADO E COM TRAVA)
+# 2. MOTOR DE ATUALIZAÇÃO DO PAINEL
 # ==========================================
 def atualizar_painel_de_chaves():
-    
     fases_ordem = [
         "Mata-mata - 1ª Rodada",
         "Mata-mata - 2ª Rodada",
@@ -67,15 +67,12 @@ def atualizar_painel_de_chaves():
             
         titulo_base = f"🏆 {str(gen).upper()} | {str(cat).upper()} | {str(sub).upper()}"
         tabelas_fases = []
-        
-        # Variável que controla o desbloqueio da próxima tabela
         fase_anterior_concluida = True 
         
         for idx_fase, fase in enumerate(fases_ordem):
             df_fase = df_brutos[df_brutos['Fase'] == fase] if not df_brutos.empty and 'Fase' in df_brutos.columns else pd.DataFrame()
             tem_votos_nesta_fase = not df_fase.empty
             
-            # REGRA DE EXIBIÇÃO: Mostra a 1ª rodada, ou se já houver votos ali, ou se a anterior fechou 100%
             mostrar_fase = (idx_fase == 0) or tem_votos_nesta_fase or fase_anterior_concluida
             
             if not mostrar_fase:
@@ -116,8 +113,6 @@ def atualizar_painel_de_chaves():
                 ])
                 
             tabelas_fases.append(tabela_atual)
-            
-            # CÁLCULO DA TRAVA: A fase só é considerada "concluída" se TODOS os listados nela tiverem 3 votos.
             fase_anterior_concluida = all(v == 3 for v in df_final['Votos']) and len(df_final) > 0
             
         if tabelas_fases:
@@ -205,6 +200,24 @@ if nome_avaliador.strip() != "" and criterio_avaliador != "Selecione...":
             
             if subcategoria_escolhida != "Selecione...":
                 df_base_filtrada = df_base_cat[df_base_cat['Subcategoria'] == subcategoria_escolhida]
+                
+                # ==========================================
+                # INTELIGÊNCIA PREDITIVA DA CHAVE
+                # ==========================================
+                n_atletas = len(df_base_filtrada)
+                if n_atletas > 0:
+                    # Calcula as rodadas matemáticas até sobrarem 2 atletas
+                    rodadas_ate_final = math.ceil(math.log2(n_atletas)) if n_atletas > 1 else 1
+                    nome_fase_final = fases_campeonato[rodadas_ate_final - 1] if rodadas_ate_final <= len(fases_campeonato) else "Final"
+                    
+                    # Verifica se o número total forma pares perfeitos até o fim
+                    e_potencia_de_dois = (n_atletas & (n_atletas - 1) == 0) and n_atletas != 0
+                    
+                    if e_potencia_de_dois:
+                        st.info(f"💡 **Dinâmica da Chave:** {n_atletas} atletas inscritos. Chaveamento perfeito. A final natural desta categoria (quando restarão 2 atletas) ocorrerá na fase **{nome_fase_final}**.")
+                    else:
+                        st.warning(f"⚠️ **Alerta de Repescagem:** Esta chave possui {n_atletas} atletas. Como o número é ímpar ou não divide perfeitamente até o final, em alguma virada de fase os mestres deverão avançar a nota imediatamente abaixo da linha de corte (repescagem) para que o chaveamento feche corretamente em 2 combatentes. A final desta categoria deverá ocorrer na fase **{nome_fase_final}**.")
+                # ==========================================
                 
                 if not df_brutos.empty and 'Nome do Atleta' in df_brutos.columns and 'Fase' in df_brutos.columns and 'Avaliador' in df_brutos.columns:
                     votos_na_fase = df_brutos[df_brutos['Fase'] == fase_atual]
